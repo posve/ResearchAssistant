@@ -1,0 +1,15 @@
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Next-Gen Research Assistant specific files
+library.db
+library.db-journal
+library_vector_db/
+models/
+
+# OS specific files
+.DS_Store
+
+# Virtual Environments
+venv/
