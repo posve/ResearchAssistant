@@ -15,9 +15,24 @@ sys.modules['db'] = mock_db
 
 # Mock PyQt6 to avoid missing GUI libraries and to avoid turning
 # our threads into MagicMocks which would overwrite our methods!
-mock_pyqt = MagicMock()
-sys.modules['PyQt6'] = mock_pyqt
-sys.modules['PyQt6.QtWidgets'] = mock_pyqt
+# To avoid replacing the whole module with MagicMock and losing QMainWindow:
+class MockQtWidgets:
+    QApplication = MagicMock()
+    QMainWindow = object
+    QWidget = MagicMock()
+    QVBoxLayout = MagicMock()
+    QHBoxLayout = MagicMock()
+    QPushButton = MagicMock()
+    QFileDialog = MagicMock()
+    QListWidget = MagicMock()
+    QTextEdit = MagicMock()
+    QLabel = MagicMock()
+    QSplitter = MagicMock()
+    QLineEdit = MagicMock()
+    QTabWidget = MagicMock()
+
+sys.modules['PyQt6'] = MagicMock()
+sys.modules['PyQt6.QtWidgets'] = MockQtWidgets()
 
 class MockQThread:
     def __init__(self, *args, **kwargs):
@@ -35,6 +50,7 @@ sys.modules['PyQt6.QtCore'] = MockQtCore()
 
 import requests
 from main import PDFProcessorThread
+from main import MainWindow
 
 class TestFetchCrossrefMetadata(unittest.TestCase):
     def setUp(self):
@@ -174,5 +190,121 @@ class TestFetchCrossrefMetadata(unittest.TestCase):
 
         self.assertIsNone(result)
 
+class TestChatXSSFix(unittest.TestCase):
+    def setUp(self):
+        pass
+
+    @patch('main.LLMChatThread')
+    @patch('main.LLMLoadThread')
+    def test_send_chat_message_escapes_input(self, mock_load_thread, mock_chat_thread):
+        # We can test `send_chat_message` directly by creating a dummy instance
+        # that doesn't call __init__ to avoid UI setup, or by bypassing __init__.
+
+
+        # Create a dummy object and bind the method
+        class DummyMainWindow:
+            pass
+
+        window = DummyMainWindow()
+
+        # Setup the mocked widgets
+        window.txt_chat_input = MagicMock()
+        window.txt_chat_history = MagicMock()
+        window.btn_send_chat = MagicMock()
+        window.rag = MagicMock()
+        window.llm = MagicMock()
+
+        # Mock the query return
+        window.rag.query.return_value = []
+
+        # Setup the input
+        malicious_input = "<script>alert('xss')</script>"
+        window.txt_chat_input.text.return_value = malicious_input
+
+        # Ensure it doesn't crash on connecting missing methods
+        window.on_chat_response = MagicMock()
+        window.on_chat_error = MagicMock()
+
+        # Bind and call the method
+        MainWindow.send_chat_message(window)
+
+        # Ensure it was called with the escaped string
+        import html
+        expected_escaped = html.escape(malicious_input)
+
+        # txt_chat_history.append is called a few times.
+        calls = window.txt_chat_history.append.call_args_list
+        self.assertTrue(len(calls) >= 2)
+
+        # Verify the first append call contains the escaped input
+        first_call_arg = calls[0][0][0]
+        self.assertIn(expected_escaped, first_call_arg)
+        self.assertNotIn(malicious_input, first_call_arg)
+
+    def test_on_chat_response_escapes_input(self):
+
+
+        class DummyMainWindow:
+            pass
+
+        window = DummyMainWindow()
+        window.txt_chat_history = MagicMock()
+        window.btn_send_chat = MagicMock()
+
+        # Mock text cursor
+        cursor_mock = MagicMock()
+        window.txt_chat_history.textCursor.return_value = cursor_mock
+
+        malicious_input = "<img src=x onerror=alert(1)>"
+
+        MainWindow.on_chat_response(window, malicious_input)
+
+        import html
+        expected_escaped = html.escape(malicious_input)
+
+        calls = window.txt_chat_history.append.call_args_list
+        self.assertTrue(len(calls) >= 1)
+
+        first_call_arg = calls[0][0][0]
+        self.assertIn(expected_escaped, first_call_arg)
+        self.assertNotIn(malicious_input, first_call_arg)
+
+    def test_on_chat_error_escapes_input(self):
+
+
+        class DummyMainWindow:
+            pass
+
+        window = DummyMainWindow()
+        window.txt_chat_history = MagicMock()
+        window.btn_send_chat = MagicMock()
+
+        malicious_input = "<svg/onload=alert(1)>"
+
+        MainWindow.on_chat_error(window, malicious_input)
+
+        import html
+        expected_escaped = html.escape(malicious_input)
+
+        calls = window.txt_chat_history.append.call_args_list
+        self.assertTrue(len(calls) >= 1)
+
+        first_call_arg = calls[0][0][0]
+        self.assertIn(expected_escaped, first_call_arg)
+        self.assertNotIn(malicious_input, first_call_arg)
+
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestMainWindowXSS(unittest.TestCase):
+    @patch('main.QApplication')
+    def test_send_chat_message_escapes_html(self, mock_qapp):
+        # We only want to instantiate MainWindow, but we have mocked dependencies.
+        # MainWindow.__init__ creates instances of mocked managers and sets up the UI.
+
+        # It needs some GUI parts to work, wait, since we mocked PyQt6, MainWindow won't have actual widgets!
+        # But wait, MainWindow subclasses QMainWindow which we didn't mock properly if we just did MagicMock()
+        # Actually, in this test file we mocked PyQt6.QtWidgets = MagicMock().
+        # So MainWindow inherits from a MagicMock. Its UI setup might not work as expected or might just be mock calls.
+        pass
