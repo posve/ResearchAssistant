@@ -2,6 +2,7 @@ import sys
 import os
 import re
 import requests
+import html
 import fitz  # PyMuPDF
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
@@ -197,15 +198,21 @@ class MainWindow(QMainWindow):
         data = self.metadata_store.get(filename)
         if data:
             meta = data["metadata"]
-            display_text = f"""<b>Title:</b> {meta.get('title')}
+            title = html.escape(str(meta.get('title', 'Unknown Title')))
+            author = html.escape(str(meta.get('author', 'Unknown Author')))
+            year = html.escape(str(meta.get('year', 'Unknown Year')))
+            doi = html.escape(str(meta.get('doi', 'Unknown DOI')))
+            path = html.escape(str(data.get('path', 'Unknown Path')))
+
+            display_text = f"""<b>Title:</b> {title}
 <br><br>
-<b>Author(s):</b> {meta.get('author')}
+<b>Author(s):</b> {author}
 <br><br>
-<b>Year:</b> {meta.get('year')}
+<b>Year:</b> {year}
 <br><br>
-<b>DOI:</b> {meta.get('doi')}
+<b>DOI:</b> {doi}
 <br><br>
-<i><b>File:</b> {data.get('path')}</i>
+<i><b>File:</b> {path}</i>
 """
             self.txt_metadata.setHtml(display_text)
         else:

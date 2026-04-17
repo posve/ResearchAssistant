@@ -2,6 +2,7 @@ import sys
 import os
 import re
 import requests
+import html
 import fitz  # PyMuPDF
 # Suppress the non-fatal C-level warning messages from MuPDF about malformed PDFs
 fitz.TOOLS.mupdf_display_errors(False)
@@ -208,7 +209,7 @@ class MainWindow(QMainWindow):
     def init_llm(self):
         self.txt_chat_history.append("<i>Initializing Local AI Model... Please wait.</i>")
         self.llm_load_thread = LLMLoadThread(self.llm)
-        self.llm_load_thread.progress_update.connect(lambda msg: self.txt_chat_history.append(f"<i>{msg}</i>"))
+        self.llm_load_thread.progress_update.connect(lambda msg: self.txt_chat_history.append(f"<i>{html.escape(msg)}</i>"))
         self.llm_load_thread.finished.connect(lambda: self.txt_chat_history.append("<b>AI is ready! Ask a question.</b><br><hr>"))
         self.llm_load_thread.start()
 
@@ -337,7 +338,7 @@ class MainWindow(QMainWindow):
             return
             
         self.txt_chat_input.clear()
-        self.txt_chat_history.append(f"<b>You:</b> {question}<br>")
+        self.txt_chat_history.append(f"<b>You:</b> {html.escape(question)}<br>")
         self.btn_send_chat.setEnabled(False)
         self.txt_chat_history.append("<i>Searching documents and thinking...</i>")
         
@@ -357,11 +358,11 @@ class MainWindow(QMainWindow):
         cursor.select(cursor.SelectionType.BlockUnderCursor)
         cursor.removeSelectedText()
         
-        self.txt_chat_history.append(f"<b>Assistant:</b> {answer}<br><br><hr>")
+        self.txt_chat_history.append(f"<b>Assistant:</b> {html.escape(answer)}<br><br><hr>")
         self.btn_send_chat.setEnabled(True)
 
     def on_chat_error(self, error_msg):
-        self.txt_chat_history.append(f"<b style='color:red;'>Error:</b> {error_msg}<br><br><hr>")
+        self.txt_chat_history.append(f"<b style='color:red;'>Error:</b> {html.escape(error_msg)}<br><br><hr>")
         self.btn_send_chat.setEnabled(True)
 
     def perform_search(self):
@@ -411,18 +412,28 @@ class MainWindow(QMainWindow):
         data = self.metadata_store.get(filename)
         if data:
             meta = data["metadata"]
-            display_text = f"""<b>Title:</b> {meta.get('title')}
+            title = html.escape(str(meta.get('title', 'Unknown Title')))
+            author = html.escape(str(meta.get('author', 'Unknown Author')))
+            year = html.escape(str(meta.get('year', 'Unknown Year')))
+            doi = html.escape(str(meta.get('doi', 'Unknown DOI')))
+            path = html.escape(str(data.get('path', 'Unknown Path')))
+
+            display_text = f"""<b>Title:</b> {title}
 <br><br>
-<b>Author(s):</b> {meta.get('author')}
+<b>Author(s):</b> {author}
 <br><br>
-<b>Year:</b> {meta.get('year')}
+<b>Year:</b> {year}
 <br><br>
-<b>DOI:</b> {meta.get('doi')}
+<b>DOI:</b> {doi}
 <br><br>
-<i><b>File:</b> {data.get('path')}</i>
+<i><b>File:</b> {path}</i>
 """
             if "snippet" in data and data["snippet"]:
-                display_text += f"<br><br><b>Search Match:</b><br><i>...{data['snippet']}...</i>"
+                snippet = data['snippet']
+                # snippet contains <b> tags from SQLite FTS5 snippet() function
+                # We want to preserve those while escaping other HTML
+                escaped_snippet = html.escape(snippet).replace("&lt;b&gt;", "<b>").replace("&lt;/b&gt;", "</b>")
+                display_text += f"<br><br><b>Search Match:</b><br><i>...{escaped_snippet}...</i>"
                 
             self.txt_metadata.setHtml(display_text)
         else:
