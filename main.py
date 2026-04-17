@@ -215,8 +215,11 @@ class MainWindow(QMainWindow):
 
     def setup_library_tab(self):
         layout = QVBoxLayout(self.tab_library)
+        self._setup_library_controls(layout)
+        self._setup_library_search(layout)
+        self._setup_library_views(layout)
 
-        # Controls
+    def _setup_library_controls(self, layout):
         controls_layout = QHBoxLayout()
         self.btn_select_folder = QPushButton("Select PDF Folder")
         self.btn_select_folder.clicked.connect(self.select_folder)
@@ -226,7 +229,7 @@ class MainWindow(QMainWindow):
         controls_layout.addWidget(self.lbl_status, stretch=1)
         layout.addLayout(controls_layout)
 
-        # Search Bar layout
+    def _setup_library_search(self, layout):
         search_layout = QHBoxLayout()
         self.txt_search = QLineEdit()
         self.txt_search.setPlaceholderText("Search within PDFs (Full-Text Search)...")
@@ -239,6 +242,7 @@ class MainWindow(QMainWindow):
         search_layout.addWidget(self.btn_search)
         layout.addLayout(search_layout)
 
+    def _setup_library_views(self, layout):
         # Splitter for files and details
         splitter = QSplitter(Qt.Orientation.Horizontal)
         layout.addWidget(splitter, stretch=1)
