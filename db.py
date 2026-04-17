@@ -1,5 +1,4 @@
 import sqlite3
-import os
 
 class DatabaseManager:
     def __init__(self, db_path="library.db"):
