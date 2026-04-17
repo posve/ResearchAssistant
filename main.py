@@ -62,6 +62,8 @@ class PDFProcessorThread(QThread):
 
     def run(self):
         self.progress_update.emit(f"Scanning folder: {self.folder_path}...")
+        indexed_paths = self.db.get_all_filepaths()
+
         for root, _, files in os.walk(self.folder_path):
             if not self.running:
                 break
@@ -70,13 +72,15 @@ class PDFProcessorThread(QThread):
                     break
                 if file.lower().endswith(".pdf"):
                     pdf_path = os.path.join(root, file)
-                    self.process_pdf(pdf_path)
+                    self.process_pdf(pdf_path, indexed_paths)
         self.progress_update.emit("Scanning complete.")
 
-    def process_pdf(self, pdf_path):
+    def process_pdf(self, pdf_path, indexed_paths=None):
         filename = os.path.basename(pdf_path)
         
-        if self.db.is_indexed(pdf_path):
+        is_indexed = (pdf_path in indexed_paths) if indexed_paths is not None else self.db.is_indexed(pdf_path)
+
+        if is_indexed:
             self.progress_update.emit(f"Skipping already indexed file: {filename}")
             # Even if skipped, we want to show it in the UI list
             self.metadata_found.emit(pdf_path, {})
@@ -119,6 +123,9 @@ class PDFProcessorThread(QThread):
             # Save to Vector Database for AI Chat
             self.rag.add_document(pdf_path, filename, full_text)
             
+            if indexed_paths is not None:
+                indexed_paths.add(pdf_path)
+
             self.metadata_found.emit(pdf_path, metadata)
 
         except Exception as e:
