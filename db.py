@@ -70,8 +70,16 @@ class DatabaseManager:
             self.conn.rollback()
             return None
 
+    def _sanitize_fts_query(self, query):
+        if not query:
+            return ""
+        # Split by whitespace, escape double quotes, wrap each term in double quotes
+        return " ".join('"{}"'.format(word.replace('"', '""')) for word in query.split())
+
     def search(self, query):
         cursor = self.conn.cursor()
+        sanitized_query = self._sanitize_fts_query(query)
+
         # Using snippet to get context around the matched text
         cursor.execute('''
             SELECT 
@@ -81,7 +89,7 @@ class DatabaseManager:
             JOIN documents d ON fts.doc_id = d.id
             WHERE document_texts MATCH ?
             ORDER BY rank
-        ''', (query,))
+        ''', (sanitized_query,))
         
         return [dict(row) for row in cursor.fetchall()]
 
