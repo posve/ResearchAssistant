@@ -84,17 +84,20 @@ class PDFProcessorThread(QThread):
 
         self.progress_update.emit(f"Processing: {filename}")
         try:
-            full_text = ""
-            first_pages_text = ""
+            full_text_parts = []
+            first_pages_text_parts = []
             doc = fitz.open(pdf_path)
             
             # Read all pages for indexing, but only first 3 for DOI search
             for page_num in range(len(doc)):
                 page_text = doc.load_page(page_num).get_text("text")
-                full_text += page_text + "\n"
+                full_text_parts.append(page_text)
+                full_text_parts.append("\n")
                 if page_num < 3:
-                    first_pages_text += page_text
+                    first_pages_text_parts.append(page_text)
             
+            full_text = "".join(full_text_parts)
+            first_pages_text = "".join(first_pages_text_parts)
             doc.close()
 
             metadata = {}
