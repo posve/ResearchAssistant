@@ -1,5 +1,6 @@
 import unittest
 from unittest.mock import patch, MagicMock
+from urllib.parse import quote
 
 # Mock heavy dependencies before importing main
 import sys
@@ -72,7 +73,7 @@ class TestFetchCrossrefMetadata(unittest.TestCase):
         self.assertEqual(result["year"], "2023")
         self.assertEqual(result["doi"], doi)
 
-        mock_get.assert_called_once_with(f"https://api.crossref.org/works/{doi}", timeout=5)
+        mock_get.assert_called_once_with(f"https://api.crossref.org/works/{quote(doi, safe='')}", timeout=5)
 
     @patch('main.requests.get')
     def test_fetch_crossref_metadata_success_created_date(self, mock_get):
