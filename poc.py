@@ -3,6 +3,7 @@ import os
 import re
 import requests
 import html
+import urllib.parse
 import fitz  # PyMuPDF
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
@@ -64,7 +65,8 @@ class PDFProcessorThread(QThread):
 
     def fetch_crossref_metadata(self, doi):
         try:
-            url = f"https://api.crossref.org/works/{doi}"
+            safe_doi = urllib.parse.quote(doi, safe="")
+            url = f"https://api.crossref.org/works/{safe_doi}"
             response = requests.get(url, timeout=5)
             if response.status_code == 200:
                 data = response.json()
