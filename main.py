@@ -394,7 +394,7 @@ class MainWindow(QMainWindow):
             self.list_files.addItem(res['filename'])
 
     def log_message(self, message):
-        self.txt_logs.append(message)
+        self.txt_logs.append(html.escape(message))
         # scroll to bottom
         scrollbar = self.txt_logs.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
