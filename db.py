@@ -72,18 +72,22 @@ class DatabaseManager:
 
     def search(self, query):
         cursor = self.conn.cursor()
-        # Using snippet to get context around the matched text
-        cursor.execute('''
-            SELECT 
-                d.id, d.filepath, d.filename, d.title, d.authors, d.year, d.doi,
-                snippet(document_texts, 1, '<b>', '</b>', '...', 64) as context
-            FROM document_texts fts
-            JOIN documents d ON fts.doc_id = d.id
-            WHERE document_texts MATCH ?
-            ORDER BY rank
-        ''', (query,))
-        
-        return [dict(row) for row in cursor.fetchall()]
+        try:
+            # Using snippet to get context around the matched text
+            cursor.execute('''
+                SELECT
+                    d.id, d.filepath, d.filename, d.title, d.authors, d.year, d.doi,
+                    snippet(document_texts, 1, '<b>', '</b>', '...', 64) as context
+                FROM document_texts fts
+                JOIN documents d ON fts.doc_id = d.id
+                WHERE document_texts MATCH ?
+                ORDER BY rank
+            ''', (query,))
+            return [dict(row) for row in cursor.fetchall()]
+        except sqlite3.OperationalError:
+            # Handle malformed FTS5 syntax (e.g., unbalanced quotes)
+            # This prevents application crashes (DoS) while preserving full FTS5 features.
+            return []
 
     def get_all_documents(self):
         cursor = self.conn.cursor()
