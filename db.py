@@ -38,6 +38,11 @@ class DatabaseManager:
         cursor.execute("SELECT id FROM documents WHERE filepath = ?", (filepath,))
         return cursor.fetchone() is not None
 
+    def get_all_filepaths(self):
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT filepath FROM documents")
+        return {row['filepath'] for row in cursor.fetchall()}
+
     def add_document(self, filepath, filename, metadata, full_text):
         cursor = self.conn.cursor()
         
