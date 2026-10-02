@@ -174,5 +174,46 @@ class TestFetchCrossrefMetadata(unittest.TestCase):
 
         self.assertIsNone(result)
 
+
+class TestPDFProcessorThreadOptimization(unittest.TestCase):
+    def setUp(self):
+        self.mock_db = MagicMock()
+        self.mock_rag = MagicMock()
+        self.processor = PDFProcessorThread(
+            folder_path="/dummy/path",
+            db_manager=self.mock_db,
+            rag_manager=self.mock_rag
+        )
+
+    @patch('os.walk')
+    def test_run_calls_get_indexed_filepaths_once(self, mock_walk):
+        mock_walk.return_value = [
+            ("/dummy/path", [], ["doc1.pdf", "doc2.pdf"])
+        ]
+        doc1 = "/dummy/path/doc1.pdf"
+        doc2 = "/dummy/path/doc2.pdf"
+        self.mock_db.get_indexed_filepaths.return_value = {doc1}
+
+        with patch.object(self.processor, 'process_pdf') as mock_process:
+            self.processor.run()
+
+            # Verify get_indexed_filepaths was called exactly once
+            self.mock_db.get_indexed_filepaths.assert_called_once()
+
+            # Verify process_pdf was called for both files with indexed files
+            self.assertEqual(mock_process.call_count, 2)
+            mock_process.assert_any_call(doc1, indexed_files={doc1})
+            mock_process.assert_any_call(doc2, indexed_files={doc1})
+
+    def test_process_pdf_skips_when_in_indexed_files(self):
+        indexed_files = {"/dummy/path/doc1.pdf"}
+        self.processor.process_pdf(
+            "/dummy/path/doc1.pdf", indexed_files=indexed_files
+        )
+
+        # Should not call db.is_indexed because indexed_files set was provided
+        self.mock_db.is_indexed.assert_not_called()
+
+
 if __name__ == '__main__':
     unittest.main()

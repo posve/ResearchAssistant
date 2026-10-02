@@ -62,6 +62,7 @@ class PDFProcessorThread(QThread):
 
     def run(self):
         self.progress_update.emit(f"Scanning folder: {self.folder_path}...")
+        indexed_files = self.db.get_indexed_filepaths()
         for root, _, files in os.walk(self.folder_path):
             if not self.running:
                 break
@@ -70,13 +71,18 @@ class PDFProcessorThread(QThread):
                     break
                 if file.lower().endswith(".pdf"):
                     pdf_path = os.path.join(root, file)
-                    self.process_pdf(pdf_path)
+                    self.process_pdf(pdf_path, indexed_files=indexed_files)
         self.progress_update.emit("Scanning complete.")
 
-    def process_pdf(self, pdf_path):
+    def process_pdf(self, pdf_path, indexed_files=None):
         filename = os.path.basename(pdf_path)
         
-        if self.db.is_indexed(pdf_path):
+        if indexed_files is not None:
+            is_already_indexed = pdf_path in indexed_files
+        else:
+            is_already_indexed = self.db.is_indexed(pdf_path)
+
+        if is_already_indexed:
             self.progress_update.emit(f"Skipping already indexed file: {filename}")
             # Even if skipped, we want to show it in the UI list
             self.metadata_found.emit(pdf_path, {})
@@ -114,7 +120,9 @@ class PDFProcessorThread(QThread):
                 self.progress_update.emit(f"No DOI found in: {filename}")
             
             # Save to Traditional Database for metadata search
-            self.db.add_document(pdf_path, filename, metadata, full_text)
+            doc_id = self.db.add_document(pdf_path, filename, metadata, full_text)
+            if doc_id is not None and indexed_files is not None:
+                indexed_files.add(pdf_path)
             
             # Save to Vector Database for AI Chat
             self.rag.add_document(pdf_path, filename, full_text)
