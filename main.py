@@ -1,6 +1,7 @@
 import sys
 import os
 import re
+import functools
 import requests
 import html
 import fitz  # PyMuPDF
@@ -124,7 +125,9 @@ class PDFProcessorThread(QThread):
         except Exception as e:
             self.progress_update.emit(f"Error processing {filename}: {str(e)}")
 
-    def fetch_crossref_metadata(self, doi):
+    @staticmethod
+    @functools.lru_cache(maxsize=1024)
+    def fetch_crossref_metadata(doi):
         try:
             url = f"https://api.crossref.org/works/{doi}"
             response = requests.get(url, timeout=5)
