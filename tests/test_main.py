@@ -34,6 +34,7 @@ class MockQtCore:
 sys.modules['PyQt6.QtCore'] = MockQtCore()
 
 import requests
+import urllib.parse
 from main import PDFProcessorThread
 
 class TestFetchCrossrefMetadata(unittest.TestCase):
@@ -72,7 +73,8 @@ class TestFetchCrossrefMetadata(unittest.TestCase):
         self.assertEqual(result["year"], "2023")
         self.assertEqual(result["doi"], doi)
 
-        mock_get.assert_called_once_with(f"https://api.crossref.org/works/{doi}", timeout=5)
+        expected_url = f"https://api.crossref.org/works/{urllib.parse.quote(doi, safe='')}"
+        mock_get.assert_called_once_with(expected_url, timeout=5)
 
     @patch('main.requests.get')
     def test_fetch_crossref_metadata_success_created_date(self, mock_get):
@@ -173,6 +175,25 @@ class TestFetchCrossrefMetadata(unittest.TestCase):
         result = self.processor.fetch_crossref_metadata(doi)
 
         self.assertIsNone(result)
+
+    @patch('main.requests.get')
+    def test_fetch_crossref_metadata_ssrf_path_traversal(self, mock_get):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "message": {"title": ["Test Title"]}
+        }
+        mock_get.return_value = mock_response
+
+        malicious_doi = "10.1234/../../secret?param=1#anchor"
+        result = self.processor.fetch_crossref_metadata(malicious_doi)
+
+        expected_encoded_doi = urllib.parse.quote(malicious_doi, safe="")
+        expected_url = f"https://api.crossref.org/works/{expected_encoded_doi}"
+
+        mock_get.assert_called_once_with(expected_url, timeout=5)
+        self.assertEqual(expected_encoded_doi, "10.1234%2F..%2F..%2Fsecret%3Fparam%3D1%23anchor")
+        self.assertIsNotNone(result)
 
 if __name__ == '__main__':
     unittest.main()
