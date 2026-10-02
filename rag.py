@@ -60,6 +60,34 @@ class RAGManager:
             ids=ids
         )
 
+    def add_documents_batch(self, docs_list):
+        """Chunks and embeds multiple documents in a single batched vector DB call."""
+        if not docs_list:
+            return
+
+        all_ids = []
+        all_metadatas = []
+        all_documents = []
+
+        for doc in docs_list:
+            filepath = doc['filepath']
+            filename = doc['filename']
+            full_text = doc.get('full_text', '')
+
+            chunks = self.text_splitter.split_text(full_text)
+            for i, chunk in enumerate(chunks):
+                chunk_id = f"{filepath}_chunk_{i}"
+                all_ids.append(chunk_id)
+                all_documents.append(chunk)
+                all_metadatas.append({"filepath": filepath, "filename": filename})
+
+        if all_documents:
+            self.collection.add(
+                documents=all_documents,
+                metadatas=all_metadatas,
+                ids=all_ids
+            )
+
     def query(self, user_question, n_results=3):
         """Retrieve the most relevant chunks for a given question."""
         results = self.collection.query(
