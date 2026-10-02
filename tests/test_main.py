@@ -174,5 +174,32 @@ class TestFetchCrossrefMetadata(unittest.TestCase):
 
         self.assertIsNone(result)
 
+    @patch('main.requests.get')
+    def test_fetch_crossref_metadata_caching(self, mock_get):
+        # Clear cache before test to ensure clean state
+        PDFProcessorThread.fetch_crossref_metadata.cache_clear()
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "message": {
+                "title": ["Cached Paper"],
+                "author": [{"family": "Doe", "given": "John"}],
+                "created": {"date-parts": [[2024, 1, 1]]}
+            }
+        }
+        mock_get.return_value = mock_response
+
+        doi = "10.1234/cached_doi"
+
+        # First call should hit requests.get
+        result1 = PDFProcessorThread.fetch_crossref_metadata(doi)
+        # Second call with same DOI should return cached result without hitting requests.get again
+        result2 = PDFProcessorThread.fetch_crossref_metadata(doi)
+
+        self.assertEqual(result1, result2)
+        self.assertEqual(result1["title"], "Cached Paper")
+        mock_get.assert_called_once_with(f"https://api.crossref.org/works/{doi}", timeout=5)
+
 if __name__ == '__main__':
     unittest.main()
