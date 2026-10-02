@@ -59,9 +59,20 @@ class PDFProcessorThread(QThread):
         self.db = db_manager
         self.rag = rag_manager
         self.running = True
+        self.session = None
 
     def run(self):
+        self.session = requests.Session()
         self.progress_update.emit(f"Scanning folder: {self.folder_path}...")
+
+        # O(1) set lookup for indexed filepaths
+        indexed_filepaths = set()
+        if hasattr(self.db, 'get_indexed_filepaths'):
+            indexed_filepaths = self.db.get_indexed_filepaths()
+
+        batch_buffer = []
+        batch_size = 10
+
         for root, _, files in os.walk(self.folder_path):
             if not self.running:
                 break
@@ -70,25 +81,38 @@ class PDFProcessorThread(QThread):
                     break
                 if file.lower().endswith(".pdf"):
                     pdf_path = os.path.join(root, file)
-                    self.process_pdf(pdf_path)
+                    filename = os.path.basename(pdf_path)
+
+                    if pdf_path in indexed_filepaths or (not indexed_filepaths and self.db.is_indexed(pdf_path)):
+                        self.progress_update.emit(f"Skipping already indexed file: {filename}")
+                        self.metadata_found.emit(pdf_path, {})
+                        continue
+
+                    self.progress_update.emit(f"Processing: {filename}")
+                    doc_item = self._extract_pdf_data(pdf_path)
+                    if doc_item:
+                        batch_buffer.append(doc_item)
+
+                    if len(batch_buffer) >= batch_size:
+                        self._flush_batch(batch_buffer)
+                        batch_buffer = []
+
+        if self.running and batch_buffer:
+            self._flush_batch(batch_buffer)
+
+        if self.session:
+            self.session.close()
+            self.session = None
+
         self.progress_update.emit("Scanning complete.")
 
-    def process_pdf(self, pdf_path):
+    def _extract_pdf_data(self, pdf_path):
         filename = os.path.basename(pdf_path)
-        
-        if self.db.is_indexed(pdf_path):
-            self.progress_update.emit(f"Skipping already indexed file: {filename}")
-            # Even if skipped, we want to show it in the UI list
-            self.metadata_found.emit(pdf_path, {})
-            return
-
-        self.progress_update.emit(f"Processing: {filename}")
         try:
             full_text = ""
             first_pages_text = ""
             doc = fitz.open(pdf_path)
             
-            # Read all pages for indexing, but only first 3 for DOI search
             for page_num in range(len(doc)):
                 page_text = doc.load_page(page_num).get_text("text")
                 full_text += page_text + "\n"
@@ -98,7 +122,6 @@ class PDFProcessorThread(QThread):
             doc.close()
 
             metadata = {}
-            # Find DOI in the first 3 pages
             doi_pattern = re.compile(r'\b(10\.\d{4,9}/[-._;()/:A-Z0-9]+)\b', re.IGNORECASE)
             match = doi_pattern.search(first_pages_text)
 
@@ -112,22 +135,59 @@ class PDFProcessorThread(QThread):
                     self.progress_update.emit(f"Failed to fetch metadata for DOI: {doi}")
             else:
                 self.progress_update.emit(f"No DOI found in: {filename}")
-            
-            # Save to Traditional Database for metadata search
-            self.db.add_document(pdf_path, filename, metadata, full_text)
-            
-            # Save to Vector Database for AI Chat
-            self.rag.add_document(pdf_path, filename, full_text)
-            
-            self.metadata_found.emit(pdf_path, metadata)
 
+            return {
+                "filepath": pdf_path,
+                "filename": filename,
+                "metadata": metadata,
+                "full_text": full_text
+            }
         except Exception as e:
             self.progress_update.emit(f"Error processing {filename}: {str(e)}")
+            return None
+
+    def _flush_batch(self, batch):
+        if not batch:
+            return
+        # Batch database insert
+        if hasattr(self.db, 'add_documents_batch'):
+            self.db.add_documents_batch(batch)
+        else:
+            for doc in batch:
+                self.db.add_document(doc['filepath'], doc['filename'], doc['metadata'], doc['full_text'])
+
+        # Batch vector DB insert
+        if hasattr(self.rag, 'add_documents_batch'):
+            self.rag.add_documents_batch(batch)
+        else:
+            for doc in batch:
+                self.rag.add_document(doc['filepath'], doc['filename'], doc['full_text'])
+
+        for doc in batch:
+            self.metadata_found.emit(doc['filepath'], doc['metadata'])
+
+    def process_pdf(self, pdf_path):
+        filename = os.path.basename(pdf_path)
+
+        if self.db.is_indexed(pdf_path):
+            self.progress_update.emit(f"Skipping already indexed file: {filename}")
+            self.metadata_found.emit(pdf_path, {})
+            return
+
+        self.progress_update.emit(f"Processing: {filename}")
+        doc_item = self._extract_pdf_data(pdf_path)
+        if doc_item:
+            self.db.add_document(pdf_path, filename, doc_item['metadata'], doc_item['full_text'])
+            self.rag.add_document(pdf_path, filename, doc_item['full_text'])
+            self.metadata_found.emit(pdf_path, doc_item['metadata'])
 
     def fetch_crossref_metadata(self, doi):
         try:
             url = f"https://api.crossref.org/works/{doi}"
-            response = requests.get(url, timeout=5)
+            if getattr(self, 'session', None):
+                response = self.session.get(url, timeout=5)
+            else:
+                response = requests.get(url, timeout=5)
             if response.status_code == 200:
                 data = response.json()
                 message = data.get("message", {})

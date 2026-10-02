@@ -11,6 +11,13 @@ class DatabaseManager:
     def _create_tables(self):
         cursor = self.conn.cursor()
         
+        # Enable WAL mode and normal synchronous for fast concurrent writes
+        try:
+            cursor.execute('PRAGMA journal_mode=WAL;')
+            cursor.execute('PRAGMA synchronous=NORMAL;')
+        except sqlite3.OperationalError:
+            pass
+
         # Main documents table for metadata
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS documents (
@@ -32,6 +39,11 @@ class DatabaseManager:
         ''')
         
         self.conn.commit()
+
+    def get_indexed_filepaths(self):
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT filepath FROM documents")
+        return {row['filepath'] for row in cursor.fetchall()}
 
     def is_indexed(self, filepath):
         cursor = self.conn.cursor()
@@ -69,6 +81,53 @@ class DatabaseManager:
             # Document already exists, rollback and return None
             self.conn.rollback()
             return None
+
+    def add_documents_batch(self, docs_list):
+        """Perform bulk insertion of documents in a single transaction."""
+        if not docs_list:
+            return []
+
+        cursor = self.conn.cursor()
+        added_ids = []
+        try:
+            for doc in docs_list:
+                filepath = doc['filepath']
+                filename = doc['filename']
+                metadata = doc.get('metadata', {})
+                full_text = doc.get('full_text', '')
+
+                cursor.execute('''
+                    INSERT INTO documents (filepath, filename, title, authors, year, doi)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (
+                    filepath,
+                    filename,
+                    metadata.get('title'),
+                    metadata.get('author'),
+                    metadata.get('year'),
+                    metadata.get('doi')
+                ))
+
+                doc_id = cursor.lastrowid
+
+                cursor.execute('''
+                    INSERT INTO document_texts (doc_id, full_text)
+                    VALUES (?, ?)
+                ''', (doc_id, full_text))
+
+                added_ids.append(doc_id)
+
+            self.conn.commit()
+            return added_ids
+        except sqlite3.IntegrityError:
+            self.conn.rollback()
+            # Fall back to individual insertion for graceful duplicate handling
+            res_ids = []
+            for doc in docs_list:
+                res_id = self.add_document(doc['filepath'], doc['filename'], doc.get('metadata', {}), doc.get('full_text', ''))
+                if res_id:
+                    res_ids.append(res_id)
+            return res_ids
 
     def search(self, query):
         cursor = self.conn.cursor()
