@@ -10,6 +10,10 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 
+# Common regex for DOIs (simplified but effective for most modern DOIs)
+DOI_PATTERN = re.compile(r'\b(10\.\d{4,9}/[-._;()/:A-Z0-9]+)\b', re.IGNORECASE)
+
+
 class PDFProcessorThread(QThread):
     progress_update = pyqtSignal(str)
     metadata_found = pyqtSignal(str, dict)
@@ -45,9 +49,7 @@ class PDFProcessorThread(QThread):
             doc.close()
 
             # Find DOI
-            # Common regex for DOIs (simplified but effective for most modern DOIs)
-            doi_pattern = re.compile(r'\b(10\.\d{4,9}/[-._;()/:A-Z0-9]+)\b', re.IGNORECASE)
-            match = doi_pattern.search(text)
+            match = DOI_PATTERN.search(text)
 
             if match:
                 doi = match.group(1)
