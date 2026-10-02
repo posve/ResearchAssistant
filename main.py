@@ -11,6 +11,8 @@ from db import DatabaseManager
 from rag import RAGManager
 from llm import LLMManager
 
+DOI_PATTERN = re.compile(r'\b(10\.\d{4,9}/[-._;()/:A-Z0-9]+)\b', re.IGNORECASE)
+
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QPushButton, QFileDialog, QListWidget, QTextEdit, QLabel, QSplitter,
@@ -99,8 +101,7 @@ class PDFProcessorThread(QThread):
 
             metadata = {}
             # Find DOI in the first 3 pages
-            doi_pattern = re.compile(r'\b(10\.\d{4,9}/[-._;()/:A-Z0-9]+)\b', re.IGNORECASE)
-            match = doi_pattern.search(first_pages_text)
+            match = DOI_PATTERN.search(first_pages_text)
 
             if match:
                 doi = match.group(1)

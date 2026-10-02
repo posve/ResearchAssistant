@@ -34,7 +34,27 @@ class MockQtCore:
 sys.modules['PyQt6.QtCore'] = MockQtCore()
 
 import requests
-from main import PDFProcessorThread
+import timeit
+from main import PDFProcessorThread, DOI_PATTERN
+
+class TestDOIPattern(unittest.TestCase):
+    def test_doi_pattern_matching(self):
+        sample_text = "Here is a paper with DOI 10.1016/j.cell.2021.01.001 in text."
+        match = DOI_PATTERN.search(sample_text)
+        self.assertIsNotNone(match)
+        self.assertEqual(match.group(1), "10.1016/j.cell.2021.01.001")
+
+    def test_doi_pattern_no_match(self):
+        sample_text = "This document does not contain any valid Digital Object Identifier."
+        match = DOI_PATTERN.search(sample_text)
+        self.assertIsNone(match)
+
+    def test_doi_pattern_performance(self):
+        text = "Sample text with DOI 10.1234/56789/abcd-efgh inside document. " * 50
+        # Benchmark searching using module level constant
+        runs = 10000
+        t_elapsed = timeit.timeit(lambda: DOI_PATTERN.search(text), number=runs)
+        self.assertGreater(runs / t_elapsed, 1000) # Ensure thousands of searches per second
 
 class TestFetchCrossrefMetadata(unittest.TestCase):
     def setUp(self):
